@@ -20,14 +20,21 @@ PAUSE = 0.3           # pauza po každé stránce (s), ať e-shop nezatěžujeme
 MIN_PRODUCTS = 1000   # pojistka: když se načte méně bot, něco je špatně a data nepřepisujeme
 
 
+stats = {"done": 0, "failed": 0}
+
+
 def get(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "BotyPodleNohy/1.0 (+bosorka.cz)"})
-    for attempt in range(3):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; BotyPodleNohy/1.0; +https://www.bosorka.cz)"})
+    for attempt in range(2):
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=15) as r:
                 return r.read().decode("utf-8", errors="ignore")
-        except Exception:
-            time.sleep(2 * (attempt + 1))
+        except Exception as e:
+            err = e
+            time.sleep(2)
+    stats["failed"] += 1
+    if stats["failed"] <= 5:
+        print(f"nepodařilo se stáhnout {url}: {err}", flush=True)
     return None
 
 
@@ -44,12 +51,17 @@ def candidate_urls():
 def fetch_product(url):
     h = get(url)
     time.sleep(PAUSE)
+    stats["done"] += 1
+    if stats["done"] % 250 == 0:
+        print(f"  {stats['done']} stránek, chyb {stats['failed']}", flush=True)
+    if stats["done"] >= 100 and stats["failed"] > stats["done"] / 2:
+        raise SystemExit("Většina stránek se nedá stáhnout – e-shop nás asi blokuje.")
     return product_from_html(url, h) if h else None
 
 
 def main(out_dir):
     urls = candidate_urls()
-    print(f"stránek ke kontrole: {len(urls)}")
+    print(f"stránek ke kontrole: {len(urls)}", flush=True)
     with ThreadPoolExecutor(PARALLEL) as pool:
         products = [p for p in pool.map(fetch_product, urls) if p]
     print(f"bot nalezeno: {len(products)}")
